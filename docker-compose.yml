@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  kafka:
+    image: $DOCKER_USER/my-kafka-image:${GITHUB_SHA}  # Imagen construida y subida desde Docker Hub
+    environment:
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL=PLAINTEXT
+      - KAFKA_LISTENER_INTERCEPTOR_CLASSES=io.confluent.interceptors.LoggingInterceptor
+      - KAFKA_LISTENER_NAME=PLAINTEXT
+    ports:
+      - "2181:2181"
+      - "9092:9092"
+    networks:
+      - kafka-net
+    depends_on:
+      - zookeeper
+
+  zookeeper:
+    image: wurstmeister/zookeeper:3.4.6
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-net
+
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=crimes_owner
+      - POSTGRES_PASSWORD=npg_QUkH7TfKZlF8
+      - POSTGRES_DB=crimes
+    ports:
+      - "5432:5432"
+    networks:
+      - kafka-net
+
+  consumer:
+    build:
+      context: ./consumer  # Carpeta donde está el Dockerfile para el consumidor
+    depends_on:
+      - kafka
+    networks:
+      - kafka-net
+
+  producer:
+    build:
+      context: ./producer  # Carpeta donde está el Dockerfile para el productor
+    depends_on:
+      - kafka
+    networks:
+      - kafka-net
+
+networks:
+  kafka-net:
+    driver: bridge
