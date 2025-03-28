@@ -6,4 +6,4 @@ COPY producer.py requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "producer.py"]
+CMD ["python", "kafkaProducer.py"]
