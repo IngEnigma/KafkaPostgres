@@ -1,44 +1,33 @@
-name: Kafka Postgres Docker Deployment
+name: Build and Deploy to Docker Hub
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build:
+  build_and_push:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Install Docker
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker.io
-    - name: Build Docker image with Kafka
-      run: |
-        docker build -t my-kafka-image .
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Run Kafka container
-      run: |
-        docker run -d --name kafka-container -p 2181:2181 -p 9092:9092 my-kafka-image
+      - name: Docker login
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
 
-    - name: Docker login
-      env:
-        DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-      run: |
-        docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+      - name: Build and push Producer Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/producer:latest -t ${{ secrets.DOCKER_USER }}/producer:${{ github.sha }} -f Dockerfile.producer .
+          docker push ${{ secrets.DOCKER_USER }}/producer:latest
+          docker push ${{ secrets.DOCKER_USER }}/producer:${{ github.sha }}
 
-    - name: Build and push the Docker image to Docker Hub
-      run: |
-        docker build -t $DOCKER_USER/my-kafka-image:${{ github.sha }} .
-        docker push $DOCKER_USER/my-kafka-image:${{ github.sha }}
+      - name: Build and push Consumer Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/consumer:latest -t ${{ secrets.DOCKER_USER }}/consumer:${{ github.sha }} -f Dockerfile.consumer .
+          docker push ${{ secrets.DOCKER_USER }}/consumer:latest
+          docker push ${{ secrets.DOCKER_USER }}/consumer:${{ github.sha }}
 
-    - name: Show Docker image
-      run: |
-        docker images
-
-    - name: Check running Docker containers
-      run: |
-        docker ps
+      - name: Logout from Docker Hub
+        run: docker logout
