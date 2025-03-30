@@ -1,6 +1,5 @@
 FROM python:3.10-slim
 
-# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
@@ -12,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["/bin/bash", "-c", "tail -f /dev/null"]  # Comando dummy para compose
+CMD ["/bin/bash", "-c", "tail -f /dev/null"]
