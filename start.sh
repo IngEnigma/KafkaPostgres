@@ -10,7 +10,7 @@ sleep 20
 
 rpk topic create postgres-crimes
 
-python producer_postgres.py &
-python consumer_postgres.py &
+python kafkaProducer.py &
+python kafkaCconsumer.py &
 
 tail -f /dev/null
