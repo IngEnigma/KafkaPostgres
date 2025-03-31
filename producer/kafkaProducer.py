@@ -28,7 +28,7 @@ class CrimeDataProducer:
             print(f"Error fetching data: {e}")
             raise
             
-    def produce_to_kafka(self, topic, data_url, batch_size=50):
+    def produce_to_kafka(self, topic, data_url, batch_size=10):
         """Envía datos a Kafka en lotes"""
         batch = []
         start_time = datetime.now()
