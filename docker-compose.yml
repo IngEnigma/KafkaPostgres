@@ -16,7 +16,7 @@ services:
 
   producer:
     build: .
-    command: python producer_postgres.py
+    command: python kafkaProducer.py
     depends_on:
       - redpanda
     environment:
@@ -24,7 +24,7 @@ services:
 
   consumer:
     build: .
-    command: python consumer_postgres.py
+    command: python kafkaConsumer.py
     depends_on:
       - redpanda
     environment:
