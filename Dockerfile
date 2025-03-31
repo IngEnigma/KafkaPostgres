@@ -1,15 +1,28 @@
-FROM python:3.10-slim
+FROM ubuntu
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y \
+    default-jre \
     wget \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    python3 \
+    python3-pip \
+    postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+RUN wget https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
+    tar -xvf kafka_2.12-3.7.2.tgz && \
+    mv kafka_2.12-3.7.2 /opt/kafka
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install -r requirements.txt
 
-COPY . .
+COPY producer.py consumer.py run.sh ./
+COPY zookeeper.properties /opt/kafka/config/
+COPY server.properties /opt/kafka/config/
 
-CMD ["/bin/bash", "-c", "tail -f /dev/null"]
+RUN chmod +x run.sh
+
+EXPOSE 2181 9092
+
+CMD ["bash", "./run.sh"]
