@@ -1,18 +1,16 @@
 #!/bin/bash
 
-rpk redpanda start \
+docker.redpanda.com/redpandadata/redpanda:v23.3.8 redpanda start \
   --smp 1 \
   --memory 1G \
   --overprovisioned \
-  --node-id 0 \
-  --kafka-addr PLAINTEXT://0.0.0.0:9092 \
-  --advertise-kafka-addr PLAINTEXT://localhost:9092 &
+  --kafka-addr PLAINTEXT://0.0.0.0:9092 &
 
-sleep 15
+sleep 20
 
-rpk topic create postgres-crimes || true
+rpk topic create postgres-crimes
 
-python producer_postgres.py &
-python consumer_postgres.py &
+python kafkaProducer.py &
+python kafkaCconsumer.py &
 
 tail -f /dev/null
