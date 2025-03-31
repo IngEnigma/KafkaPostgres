@@ -1,24 +1,58 @@
-from kafka import KafkaProducer
-import requests
-import json
+import logging
 import os
+import json
+import requests
+from kafka import KafkaProducer
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def get_results():
     url = os.getenv("RESULTS_URL", "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/master/results/male_crimes/part-00000-*.json")
-    response = requests.get(url)
-    return [json.loads(line) for line in response.text.split('\n') if line.strip()]
+    logger.info(f"Fetching data from {url}")
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = [json.loads(line) for line in response.text.split('\n') if line.strip()]
+        logger.info(f"Fetched {len(data)} records successfully.")
+        return data
+    except requests.RequestException as e:
+        logger.error(f"Error fetching results: {e}")
+        return []
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON: {e}")
+        return []
 
 def main():
-    producer = KafkaProducer(
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-        value_serializer=lambda v: json.dumps(v).encode('utf-8')
-    )
+    kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    logger.info(f"Connecting to Kafka at {kafka_servers}")
     
-    for data in get_results():
-        producer.send('postgres-crimes', value=data)
-        print(f"Produced: {data}")
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=kafka_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+        logger.info("Kafka Producer initialized successfully.")
+    except Exception as e:
+        logger.error(f"Error initializing Kafka producer: {e}")
+        return
+    
+    results = get_results()
+    if not results:
+        logger.warning("No data to produce. Exiting.")
+        return
+    
+    for data in results:
+        try:
+            producer.send('postgres-crimes', value=data)
+            logger.info(f"Produced: {data}")
+        except Exception as e:
+            logger.error(f"Error producing message: {e}")
     
     producer.flush()
+    logger.info("All messages sent and producer flushed.")
 
 if __name__ == "__main__":
     main()
