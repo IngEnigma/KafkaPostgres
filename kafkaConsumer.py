@@ -1,89 +1,157 @@
-from kafka import KafkaProducer
+from kafka import KafkaConsumer
+import psycopg2
 import json
-import requests
-import time
+import sys
+from psycopg2 import sql
+from psycopg2.extras import execute_batch
 from datetime import datetime
 
-class CrimeDataProducer:
-    def __init__(self, bootstrap_servers):
-        self.producer = KafkaProducer(
-            bootstrap_servers=bootstrap_servers,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-            acks='all',
-            compression_type='gzip',  # Compresión para reducir tamaño de mensajes
-            retries=5,
-            request_timeout_ms=30000
-        )
+class NeonCrimeConsumer:
+    def __init__(self, db_config):
+        self.db_config = db_config
+        self.conn = None
         
-    def fetch_crime_data(self, url):
-        """Obtiene datos de crímenes desde la URL"""
+    def __enter__(self):
+        """Establece conexión a Neon.tech"""
         try:
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            
-            for line in response.iter_lines():
-                if line:
-                    yield json.loads(line)
+            self.conn = psycopg2.connect(
+                host=self.db_config['host'],
+                database=self.db_config['database'],
+                user=self.db_config['user'],
+                password=self.db_config['password'],
+                sslmode='require'
+            )
+            self.conn.autocommit = False
+            print("Conexión a Neon.tech establecida!")
+            self._setup_database()
+            return self
         except Exception as e:
-            print(f"Error fetching data: {e}")
+            print(f"Error conectando a Neon.tech: {e}")
+            sys.exit(1)
+            
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            self.conn.close()
+            print("Conexión a Neon.tech cerrada")
+            
+    def _setup_database(self):
+        """Crea la tabla si no existe"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS crimes (
+                        DR_NO BIGINT PRIMARY KEY,
+                        report_date TIMESTAMP,
+                        victim_age INTEGER,
+                        victim_sex VARCHAR(2),
+                        crm_cd_desc TEXT,
+                        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    
+                    CREATE INDEX IF NOT EXISTS idx_crimes_date ON crimes(report_date);
+                    CREATE INDEX IF NOT EXISTS idx_crimes_victim_age ON crimes(victim_age);
+                """)
+                self.conn.commit()
+                print("Esquema de base de datos verificado")
+        except Exception as e:
+            print(f"Error configurando base de datos: {e}")
+            self.conn.rollback()
             raise
             
-    def produce_to_kafka(self, topic, data_url, batch_size=1000):
-        """Envía datos a Kafka en lotes"""
+    def process_messages(self, consumer, batch_size=500):
+        """Procesa mensajes de Kafka en lotes"""
         batch = []
-        start_time = datetime.now()
+        last_commit = datetime.now()
         
-        for i, crime in enumerate(self.fetch_crime_data(data_url)):
+        for message in consumer:
             try:
-                # Validar datos básicos
+                crime = message.value
+                
+                # Validar campos requeridos
                 if not all(k in crime for k in ['DR_NO', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']):
-                    print(f"Dato incompleto omitido: {crime}")
+                    print(f"Mensaje inválido omitido: {crime}")
                     continue
                     
-                batch.append(crime)
-                
-                if len(batch) >= batch_size:
-                    self._send_batch(topic, batch)
-                    batch = []
-                    print(f"Enviado lote {i+1}...")
+                # Convertir fecha
+                try:
+                    report_date = datetime.strptime(crime['report_date'], '%m/%d/%Y %I:%M:%S %p')
+                except ValueError:
+                    report_date = None
                     
-            except Exception as e:
-                print(f"Error procesando crimen {i}: {e}")
+                batch.append((
+                    crime['DR_NO'],
+                    report_date,
+                    crime['victim_age'],
+                    crime['victim_sex'],
+                    crime['crm_cd_desc']
+                ))
                 
-        # Enviar cualquier resto en el batch
-        if batch:
-            self._send_batch(topic, batch)
-            
-        print(f"Producción completada. Tiempo total: {datetime.now() - start_time}")
-        
-    def _send_batch(self, topic, batch):
-        """Envía un lote de mensajes a Kafka"""
-        for crime in batch:
-            try:
-                self.producer.send(topic, value=crime)
+                # Insertar por lotes para mejor performance
+                if len(batch) >= batch_size or (datetime.now() - last_commit).seconds >= 5:
+                    self._insert_batch(batch)
+                    batch = []
+                    last_commit = datetime.now()
+                    
+            except json.JSONDecodeError as e:
+                print(f"Error decodificando JSON: {e}")
             except Exception as e:
-                print(f"Error enviando crimen {crime['DR_NO']}: {e}")
-        
-        self.producer.flush()
-        
-    def close(self):
-        self.producer.close()
+                print(f"Error procesando mensaje: {e}")
+                
+        # Insertar cualquier resto en el batch
+        if batch:
+            self._insert_batch(batch)
+            
+    def _insert_batch(self, batch):
+        """Inserta un lote de registros en PostgreSQL"""
+        try:
+            with self.conn.cursor() as cur:
+                execute_batch(
+                    cur,
+                    """
+                    INSERT INTO crimes (DR_NO, report_date, victim_age, victim_sex, crm_cd_desc)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (DR_NO) DO NOTHING
+                    """,
+                    batch,
+                    page_size=len(batch)
+                self.conn.commit()
+                print(f"Insertado lote de {len(batch)} registros")
+        except Exception as e:
+            print(f"Error insertando lote: {e}")
+            self.conn.rollback()
 
 if __name__ == "__main__":
-    # Configuración
-    KAFKA_SERVERS = ['localhost:9092']
-    TOPIC = 'crime_records'
-    DATA_URL = 'https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/part-00000-8b3d0568-ab40-4980-a6e8-e7e006621725-c000.json'
+    # Configuración de Neon.tech
+    DB_CONFIG = {
+        'host': 'ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech',
+        'database': 'crimes',
+        'user': 'crimes_owner',
+        'password': 'npg_QUkH7TfKZlF8'
+    }
     
-    # Iniciar productor
-    producer = CrimeDataProducer(KAFKA_SERVERS)
+    # Configuración Kafka
+    KAFKA_CONFIG = {
+        'bootstrap_servers': ['localhost:9092'],
+        'group_id': 'neon-crime-consumers',
+        'auto_offset_reset': 'earliest',
+        'enable_auto_commit': False,
+        'consumer_timeout_ms': 60000,
+        'max_poll_records': 1000
+    }
     
     try:
-        print("Iniciando producción de datos de crímenes...")
-        producer.produce_to_kafka(TOPIC, DATA_URL)
+        with NeonCrimeConsumer(DB_CONFIG) as consumer:
+            kafka_consumer = KafkaConsumer(
+                'crime_records',
+                **KAFKA_CONFIG,
+                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            
+            print("Iniciando consumo de mensajes...")
+            consumer.process_messages(kafka_consumer)
+            
     except KeyboardInterrupt:
-        print("\nDeteniendo productor...")
+        print("\nDeteniendo consumidor...")
     except Exception as e:
         print(f"Error fatal: {e}")
     finally:
-        producer.close()
+        print("Proceso terminado")
