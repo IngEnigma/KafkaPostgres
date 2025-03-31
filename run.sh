@@ -1,21 +1,16 @@
 #!/bin/bash
 
-curl -o /opt/kafka/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh && \
-    chmod +x /opt/kafka/wait-for-it.sh
-
-/opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties &
-
-/opt/kafka/wait-for-it.sh localhost:2181 --timeout=30 -- echo "Zookeeper está listo"
-
 /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties &
 
-/opt/kafka/wait-for-it.sh localhost:9092 --timeout=30 -- echo "Kafka está listo"
+/opt/kafka/wait-for-it.sh localhost:9092 --timeout=60 -- echo "Kafka está listo"
 
 /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
     --bootstrap-server localhost:9092 \
     --replication-factor 1 \
     --partitions 1 \
     --topic crime_records
+
+sleep 10
 
 python3 /app/producer/kafkaProducer.py &
 python3 /app/consumer/kafkaConsumer.py &
