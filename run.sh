@@ -11,7 +11,7 @@ sleep 20
 /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
     --bootstrap-server localhost:9092 \
     --replication-factor 1 \
-    --partitions 3 \
+    --partitions 1 \
     --topic crime_records
 
 python3 /app/producer/kafkaProducer.py &
