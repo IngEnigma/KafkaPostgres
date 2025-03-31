@@ -19,9 +19,6 @@ COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
 COPY kafkaProducer.py kafkaConsumer.py start.sh ./
-COPY zookeeper.properties /opt/kafka/config/
-COPY server.properties /opt/kafka/config/
-
 RUN chmod +x start.sh
 
 EXPOSE 2181 9092
