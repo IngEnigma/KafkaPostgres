@@ -2,34 +2,42 @@ version: '3.8'
 
 services:
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:v23.3.8
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.7  
     command:
       - redpanda
       - start
-      - --smp 1
-      - --memory 1G
+      - --smp=1
+      - --memory=1G
       - --overprovisioned
-      - --kafka-addr PLAINTEXT://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
     ports:
       - "9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   producer:
     build: .
-    command: python kafkaProducer.py
+    command: sh -c "while ! nc -z redpanda 9092; do sleep 1; done; python kafkaProducer.py"
     depends_on:
-      - redpanda
+      redpanda:
+        condition: service_healthy
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092"
+      RESULTS_URL: "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/master/results/male_crimes/part-00000-*.json"
 
   consumer:
     build: .
-    command: python kafkaConsumer.py
+    command: sh -c "while ! nc -z redpanda 9092; do sleep 1; done; python kafkaConsumer.py"
     depends_on:
-      - redpanda
+      redpanda:
+        condition: service_healthy
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
-      - PGHOST=ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech
-      - PGDATABASE=crimes
-      - PGUSER=crimes_owner
-      - PGPASSWORD=npg_QUkH7TfKZlF8
+      KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092"
+      PGHOST: "ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech"
+      PGDATABASE: "crimes"
+      PGUSER: "crimes_owner"
+      PGPASSWORD: "npg_QUkH7TfKZlF8"
