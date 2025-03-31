@@ -73,7 +73,7 @@ if __name__ == "__main__":
     # Configuración
     KAFKA_SERVERS = ['localhost:9092']
     TOPIC = 'crime_records'
-    DATA_URL = 'https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/part-00000-8b3d0568-ab40-4980-a6e8-e7e006621725-c000.json'
+    DATA_URL = 'https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl'
     
     # Iniciar productor
     producer = CrimeDataProducer(KAFKA_SERVERS)
