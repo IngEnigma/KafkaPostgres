@@ -1,16 +1,12 @@
 #!/bin/bash
 
-docker.redpanda.com/redpandadata/redpanda:v23.3.8 redpanda start \
-  --smp 1 \
-  --memory 1G \
-  --overprovisioned \
-  --kafka-addr PLAINTEXT://0.0.0.0:9092 &
+/opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties &
 
-sleep 20
+sleep 5
+/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties &
 
-rpk topic create postgres-crimes
-
-python kafkaProducer.py &
-python kafkaCconsumer.py &
+sleep 10
+python3 producer.py &
+python3 consumer.py &
 
 tail -f /dev/null
