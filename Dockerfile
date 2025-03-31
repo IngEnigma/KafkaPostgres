@@ -29,7 +29,7 @@ RUN pip install -r /app/consumer/requirements.txt
 
 EXPOSE 9092 2181
 
-ENV KAFKA_HEAP_OPTS="-Xmx256m -Xms128m"
+ENV KAFKA_HEAP_OPTS="-Xmx128m -Xms64m"
 ENV KAFKA_JVM_PERFORMANCE_OPTS="-XX:MetaspaceSize=96m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35"
 
 CMD ["/bin/bash", "/opt/kafka/run.sh"]
