@@ -1,102 +1,89 @@
-import logging
-import os
+from kafka import KafkaProducer
 import json
+import requests
 import time
-from kafka import KafkaConsumer
-import psycopg2
+from datetime import datetime
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-def create_connection():
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv("PGHOST"),
-            database=os.getenv("PGDATABASE"),
-            user=os.getenv("PGUSER"),
-            password=os.getenv("PGPASSWORD"),
-            sslmode="require"
+class CrimeDataProducer:
+    def __init__(self, bootstrap_servers):
+        self.producer = KafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            acks='all',
+            compression_type='gzip',  # Compresión para reducir tamaño de mensajes
+            retries=5,
+            request_timeout_ms=30000
         )
-        logger.info("Connected to PostgreSQL successfully.")
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        return None
-
-def setup_database():
-    conn = create_connection()
-    if conn is None:
-        logger.error("Skipping database setup due to connection failure.")
-        return
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS crimes (
-                    DR_NO INT PRIMARY KEY,
-                    report_date TIMESTAMP,
-                    victim_age INT,
-                    victim_sex VARCHAR(1),
-                    crm_cd_desc TEXT
-                )
-            """)
-            conn.commit()
-            logger.info("Database setup complete.")
-    except Exception as e:
-        logger.error(f"Error setting up database: {e}")
-    finally:
-        conn.close()
-
-def consume_messages():
-    kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    logger.info(f"Connecting to Kafka at {kafka_servers}")
-    
-    try:
-        consumer = KafkaConsumer(
-            'postgres-crimes',
-            bootstrap_servers=kafka_servers,
-            auto_offset_reset='earliest',
-            value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-        )
-        logger.info("Kafka Consumer initialized successfully.")
-    except Exception as e:
-        logger.error(f"Error initializing Kafka consumer: {e}")
-        return
-    
-    conn = create_connection()
-    if conn is None:
-        logger.error("Skipping message consumption due to database connection failure.")
-        return
-    
-    for message in consumer:
-        data = message.value
+        
+    def fetch_crime_data(self, url):
+        """Obtiene datos de crímenes desde la URL"""
         try:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO crimes (DR_NO, report_date, victim_age, victim_sex, crm_cd_desc)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (DR_NO) DO NOTHING
-                """, (
-                    data['DR_NO'],
-                    data['report_date'],
-                    data['victim_age'],
-                    data['victim_sex'],
-                    data['crm_cd_desc']
-                ))
-                conn.commit()
-            logger.info(f"Inserted: {data['DR_NO']}")
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            for line in response.iter_lines():
+                if line:
+                    yield json.loads(line)
         except Exception as e:
-            logger.error(f"Error inserting {data['DR_NO']}: {e}")
-            conn.rollback()
-
-def main():
-    setup_database()
-    while True:
-        try:
-            consume_messages()
-        except Exception as e:
-            logger.error(f"Consumer error: {e}, retrying in 10 seconds...")
-            time.sleep(10)
+            print(f"Error fetching data: {e}")
+            raise
+            
+    def produce_to_kafka(self, topic, data_url, batch_size=1000):
+        """Envía datos a Kafka en lotes"""
+        batch = []
+        start_time = datetime.now()
+        
+        for i, crime in enumerate(self.fetch_crime_data(data_url)):
+            try:
+                # Validar datos básicos
+                if not all(k in crime for k in ['DR_NO', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']):
+                    print(f"Dato incompleto omitido: {crime}")
+                    continue
+                    
+                batch.append(crime)
+                
+                if len(batch) >= batch_size:
+                    self._send_batch(topic, batch)
+                    batch = []
+                    print(f"Enviado lote {i+1}...")
+                    
+            except Exception as e:
+                print(f"Error procesando crimen {i}: {e}")
+                
+        # Enviar cualquier resto en el batch
+        if batch:
+            self._send_batch(topic, batch)
+            
+        print(f"Producción completada. Tiempo total: {datetime.now() - start_time}")
+        
+    def _send_batch(self, topic, batch):
+        """Envía un lote de mensajes a Kafka"""
+        for crime in batch:
+            try:
+                self.producer.send(topic, value=crime)
+            except Exception as e:
+                print(f"Error enviando crimen {crime['DR_NO']}: {e}")
+        
+        self.producer.flush()
+        
+    def close(self):
+        self.producer.close()
 
 if __name__ == "__main__":
-    main()
+    # Configuración
+    KAFKA_SERVERS = ['localhost:9092']
+    TOPIC = 'crime_records'
+    DATA_URL = 'https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/part-00000-8b3d0568-ab40-4980-a6e8-e7e006621725-c000.json'
+    
+    # Iniciar productor
+    producer = CrimeDataProducer(KAFKA_SERVERS)
+    
+    try:
+        print("Iniciando producción de datos de crímenes...")
+        producer.produce_to_kafka(TOPIC, DATA_URL)
+    except KeyboardInterrupt:
+        print("\nDeteniendo productor...")
+    except Exception as e:
+        print(f"Error fatal: {e}")
+    finally:
+        producer.close()
