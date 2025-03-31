@@ -58,7 +58,7 @@ class NeonCrimeConsumer:
             self.conn.rollback()
             raise
             
-    def process_messages(self, consumer, batch_size=150):
+    def process_messages(self, consumer, batch_size=50):
         """Procesa mensajes de Kafka en lotes"""
         batch = []
         last_commit = datetime.now()
