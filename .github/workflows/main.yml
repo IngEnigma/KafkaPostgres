@@ -23,8 +23,10 @@ jobs:
         echo "- start.sh: $( [ -f start.sh ] && echo 'OK' || echo 'Falta' )"
         echo "- requirements.txt: $( [ -f requirements.txt ] && echo 'OK' || echo 'Falta' )"
 
-    - name: Verify files
-      run: tree
+    - name: Verify Python setup
+      run: |
+        docker run --rm ${{ secrets.DOCKER_USER }}/crime-kafka-pg:latest python3 --version
+        docker run --rm ${{ secrets.DOCKER_USER }}/crime-kafka-pg:latest pip list
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
