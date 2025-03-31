@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def get_results():
-    url = os.getenv("RESULTS_URL", "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/master/results/male_crimes/part-00000-*.json")
+    url = os.getenv("RESULTS_URL", "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/part-00000-8b3d0568-ab40-4980-a6e8-e7e006621725-c000.json")
     logger.info(f"Fetching data from {url}")
     
     try:
