@@ -1,31 +1,31 @@
-FROM ubuntu
+FROM eclipse-temurin:17-jre-jammy
 
 RUN apt-get update && \
-    apt-get install -y \
-    default-jre \
-    tree \
+    apt-get install -y --no-install-recommends \
     wget \
     curl \
     python3 \
     python3-pip \
-    python3-venv \
-    python3-full \
-    postgresql-client && \
-    rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
-    tar -xvf kafka_2.12-3.7.2.tgz && \
-    mv kafka_2.12-3.7.2 /opt/kafka
+ENV KAFKA_VERSION=3.7.2
+ENV SCALA_VERSION=2.12
+RUN wget -q https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    mv kafka_${SCALA_VERSION}-${KAFKA_VERSION} /opt/kafka
 
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY zookeeper.properties /opt/kafka/config/
+COPY server.properties /opt/kafka/config/
+COPY run.sh /opt/kafka/
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
-COPY kafkaProducer.py kafkaConsumer.py start.sh ./
-RUN chmod +x start.sh
+COPY producer /app/producer
+RUN pip install -r /app/producer/requirements.txt
 
-EXPOSE 2181 9092
+COPY consumer /app/consumer
+RUN pip install -r /app/consumer/requirements.txt
 
-CMD ["bash", "./start.sh"]
+EXPOSE 9092 2181
+CMD ["/bin/bash", "/opt/kafka/run.sh"]
