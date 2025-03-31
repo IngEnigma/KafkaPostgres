@@ -2,11 +2,11 @@
 
 /opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties &
 
-sleep 10
+sleep 15
 
 /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties &
 
-sleep 15
+sleep 20
 
 /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
     --bootstrap-server localhost:9092 \
