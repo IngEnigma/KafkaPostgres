@@ -15,6 +15,15 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Verify files
+      run: |
+        ls -la
+        echo "Archivos requeridos:"
+        echo "- kafkaProducer.py: $( [ -f kafkaProducer.py ] && echo 'OK' || echo 'Falta' )"
+        echo "- kafkaConsumer.py: $( [ -f kafkaConsumer.py ] && echo 'OK' || echo 'Falta' )"
+        echo "- start.sh: $( [ -f start.sh ] && echo 'OK' || echo 'Falta' )"
+        echo "- requirements.txt: $( [ -f requirements.txt ] && echo 'OK' || echo 'Falta' )"
+
+    - name: Verify files
       run: tree
 
     - name: Set up Docker Buildx
