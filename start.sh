@@ -6,7 +6,7 @@ sleep 5
 /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties &
 
 sleep 10
-python3 producer.py &
-python3 consumer.py &
+python3 kafkaProducer.py &
+python3 kafkaConsumer.py &
 
 tail -f /dev/null
