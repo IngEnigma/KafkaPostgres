@@ -4,13 +4,16 @@ import json
 import time
 
 def create_producer():
+    """Crea un productor Kafka optimizado para mensajes JSON medianos"""
     return KafkaProducer(
         bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-        batch_size=16384,  # 16KB por lote
-        linger_ms=100,     # Esperar hasta 100ms para agrupar
-        compression_type='gzip',  # Comprimir mensajes
-        max_request_size=1048576  # 1MB máximo por request
+        max_request_size=10485760,
+        batch_size=32768,
+        linger_ms=500,
+        compression_type='gzip',
+        retries=3,
+        request_timeout_ms=30000
     )
 
 def fetch_data(url):
