@@ -28,7 +28,7 @@ def fetch_data(url):
         return None
 
 def send_to_kafka(producer, topic, response):
-    batch_size = 1  # Mensajes por lote
+    batch_size = 10  # Mensajes por lote
     batch = []
     
     for line in response.iter_lines():
@@ -36,23 +36,24 @@ def send_to_kafka(producer, topic, response):
             try:
                 crime = json.loads(line)
                 batch.append(crime)
-                
+
                 if len(batch) >= batch_size:
                     for record in batch:
+                        print(f"🟢 Enviando mensaje: {record}")  # Agregado para ver cada mensaje enviado
                         producer.send(topic, record)
                     producer.flush()
-                    print(f"Enviado lote de {len(batch)} registros")
+                    print(f"✅ Enviado lote de {len(batch)} registros")
                     batch = []
                     
             except json.JSONDecodeError as e:
-                print(f"Error en línea: {e}")
+                print(f"🔴 Error en línea: {e}")
     
-    # Enviar los últimos registros restantes
     if batch:
         for record in batch:
+            print(f"🟢 Enviando mensaje: {record}")  # Últimos mensajes
             producer.send(topic, record)
         producer.flush()
-        print(f"Enviado último lote de {len(batch)} registros")
+        print(f"✅ Enviado último lote de {len(batch)} registros")
 
 def main():
     url = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
