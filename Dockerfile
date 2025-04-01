@@ -27,11 +27,11 @@ RUN wget -q https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
 COPY zookeeper.properties /opt/kafka/config/
 COPY server.properties /opt/kafka/config/
 COPY *.sh /opt/kafka/
-COPY *.py /opt/kafka/  # Añadiremos scripts Python después
+COPY *.py /opt/kafka/  
 
 WORKDIR /opt/kafka
 RUN chmod +x *.sh
 
 EXPOSE 2181 9092
 
-CMD ["./run.sh"]  # Nuevo script maestro
+CMD ["./run.sh"]  
