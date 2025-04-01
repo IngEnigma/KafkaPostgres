@@ -61,12 +61,14 @@ def process_messages(consumer, conn):
         crm_cd_desc = EXCLUDED.crm_cd_desc
     """
     
-    batch_size = 1  # Procesar en lotes de 100 registros
+    batch_size = 10
     batch = []
     
     try:
         with conn.cursor() as cur:
             for message in consumer:
+                print(f"🟠 Recibido mensaje: {message.value}")  # Ver mensajes recibidos
+                
                 crime_data = validate_crime_data(message.value)
                 if crime_data:
                     batch.append(crime_data)
@@ -74,16 +76,16 @@ def process_messages(consumer, conn):
                 if len(batch) >= batch_size:
                     execute_batch(cur, insert_query, batch)
                     conn.commit()
-                    print(f"Insertados {len(batch)} registros (DR_NO: {batch[0][0]} a {batch[-1][0]})")
+                    print(f"✅ Insertados {len(batch)} registros en DB")
                     batch = []
             
             if batch:
                 execute_batch(cur, insert_query, batch)
                 conn.commit()
-                print(f"Último lote: {len(batch)} registros")
+                print(f"✅ Último lote: {len(batch)} registros insertados")
                 
     except Exception as e:
-        print(f"Error en lote: {str(e)}")
+        print(f"🔴 Error en lote: {str(e)}")
         conn.rollback()
 
 def main():
