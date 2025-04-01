@@ -4,6 +4,7 @@ import json
 import time
 import logging
 from sys import getsizeof
+from kafka.errors import NoBrokersAvailable, KafkaError 
 
 # Configuración básica de logging
 logging.basicConfig(
