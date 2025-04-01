@@ -19,21 +19,33 @@ logger = logging.getLogger(__name__)
 def create_producer():
     """Crea un productor Kafka optimizado para mensajes JSON medianos"""
     logger.info("Creando productor Kafka con configuración:")
-    logger.info(" - bootstrap_servers: localhost:9092")
-    logger.info(" - max_request_size: 1MB")
-    logger.info(" - batch_size: 32KB")
-    logger.info(" - compression_type: gzip")
-    
-    return KafkaProducer(
-        bootstrap_servers='localhost:9092',
-        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-        max_request_size=1048576,  # 1MB
-        batch_size=32768,
-        linger_ms=500,
-        compression_type='gzip',
-        retries=3,
-        request_timeout_ms=30000
-    )
+
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers='localhost:9092',
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            max_request_size=1048576,
+            batch_size=32768,
+            linger_ms=500,
+            compression_type='gzip',
+            retries=3,
+            request_timeout_ms=30000
+        )
+        
+        # Verificación activa de conexión
+        if producer.bootstrap_connected():
+            logger.info("✅ Productor Kafka creado exitosamente")
+            return producer
+        else:
+            logger.error("❌ El productor no pudo conectarse al broker")
+            raise KafkaError("No se pudo conectar al broker")
+
+    except NoBrokersAvailable as e:
+        logger.error("🚨 No hay brokers disponibles: %s", e)
+        raise
+    except Exception as e:
+        logger.error("🚨 Error crítico creando productor: %s", e)
+        raise
 
 def fetch_data(url):
     try:
