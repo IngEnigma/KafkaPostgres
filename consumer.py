@@ -61,7 +61,7 @@ def process_messages(consumer, conn):
         crm_cd_desc = EXCLUDED.crm_cd_desc
     """
     
-    batch_size = 10  # Procesar en lotes de 100 registros
+    batch_size = 1  # Procesar en lotes de 100 registros
     batch = []
     
     try:
