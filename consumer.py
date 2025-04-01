@@ -88,6 +88,11 @@ def process_messages(consumer, conn):
 
 def main():
     conn = create_db_connection()
+    if conn:
+        print("✅ Conexión exitosa a Neon.tech")
+    else:
+        print("❌ Falló la conexión")
+
     consumer = create_consumer()
     
     try:
