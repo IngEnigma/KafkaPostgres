@@ -21,10 +21,24 @@ def create_consumer():
         'crimes',
         bootstrap_servers='localhost:9092',
         value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-        max_poll_records=100,  # Procesar de 100 en 100
+        max_poll_records=200,  # Aumentado para mejor rendimiento
         auto_offset_reset='earliest',
-        consumer_timeout_ms=10000
+        consumer_timeout_ms=30000
     )
+
+def validate_crime_data(crime):
+    """Valida y limpia los datos antes de insertar"""
+    try:
+        return (
+            int(crime['dr_no']),
+            str(crime.get('report_date', ''))[:100],
+            int(crime['victim_age']) if crime.get('victim_age') else None,
+            str(crime.get('victim_sex', ''))[:1],  # Solo almacenamos 'M'/'F'
+            str(crime.get('crm_cd_desc', ''))[:100]
+        )
+    except (KeyError, ValueError) as e:
+        print(f"Dato inválido: {crime}. Error: {str(e)}")
+        return None
 
 def process_messages(consumer, conn):
     if not conn:
@@ -33,38 +47,36 @@ def process_messages(consumer, conn):
     insert_query = """
     INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
     VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (dr_no) DO NOTHING
+    ON CONFLICT (dr_no) DO UPDATE SET
+        report_date = EXCLUDED.report_date,
+        victim_age = EXCLUDED.victim_age,
+        victim_sex = EXCLUDED.victim_sex,
+        crm_cd_desc = EXCLUDED.crm_cd_desc
     """
     
-    batch_size = 50
+    batch_size = 100  # Procesar en lotes de 100 registros
     batch = []
     
     try:
         with conn.cursor() as cur:
             for message in consumer:
-                crime = message.value
-                batch.append((
-                    crime.get('dr_no'),
-                    crime.get('report_date'),
-                    crime.get('victim_age'),
-                    crime.get('victim_sex'),
-                    crime.get('crm_cd_desc')
-                ))
+                crime_data = validate_crime_data(message.value)
+                if crime_data:
+                    batch.append(crime_data)
                 
                 if len(batch) >= batch_size:
                     execute_batch(cur, insert_query, batch)
                     conn.commit()
-                    print(f"Insertado lote de {len(batch)} registros")
+                    print(f"Insertados {len(batch)} registros (DR_NO: {batch[0][0]} a {batch[-1][0]})")
                     batch = []
             
-            # Insertar los últimos registros
             if batch:
                 execute_batch(cur, insert_query, batch)
                 conn.commit()
-                print(f"Insertado último lote de {len(batch)} registros")
+                print(f"Último lote: {len(batch)} registros")
                 
     except Exception as e:
-        print(f"Error en batch: {e}")
+        print(f"Error en lote: {str(e)}")
         conn.rollback()
 
 def main():
