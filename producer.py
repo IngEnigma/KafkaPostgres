@@ -9,6 +9,8 @@ def create_producer():
         bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
         max_request_size=10485760,
+        max_request_size=1048576  # 1MB
+        #max_request_size=5242880  5MB
         batch_size=32768,
         linger_ms=500,
         compression_type='gzip',
@@ -26,7 +28,7 @@ def fetch_data(url):
         return None
 
 def send_to_kafka(producer, topic, response):
-    batch_size = 10  # Mensajes por lote
+    batch_size = 1  # Mensajes por lote
     batch = []
     
     for line in response.iter_lines():
