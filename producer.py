@@ -26,7 +26,7 @@ def fetch_data(url):
         return None
 
 def send_to_kafka(producer, topic, response):
-    batch_size = 100  # Mensajes por lote
+    batch_size = 10  # Mensajes por lote
     batch = []
     
     for line in response.iter_lines():
