@@ -34,4 +34,4 @@ RUN chmod +x *.sh
 
 EXPOSE 2181 9092
 
-CMD ["./run_all.sh"]  # Nuevo script maestro
+CMD ["./run.sh"]  # Nuevo script maestro
