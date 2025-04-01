@@ -10,6 +10,7 @@ RUN apt-get update && \
         python3-pip \
         wget \
         curl \
+        ca-certificates \
         netcat-openbsd \
         postgresql-client && \ 
     apt-get clean && \
