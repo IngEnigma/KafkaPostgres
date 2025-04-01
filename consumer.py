@@ -5,16 +5,23 @@ from psycopg2.extras import execute_batch
 
 def create_db_connection():
     try:
-        return psycopg2.connect(
-            host="ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech",
-            database="crimes",
-            user="crimes_owner",
-            password="npg_QUkH7TfKZlF8",
-            connect_timeout=10
-        )
-    except psycopg2.Error as e:
-        print(f"Error de conexión a DB: {e}")
-        return None
+    return psycopg2.connect(
+        host="ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech",
+        database="crimes",
+        user="crimes_owner",
+        password="npg_QUkH7TfKZlF8",
+        connect_timeout=10,
+        sslmode="require",
+        sslrootcert="/etc/ssl/certs/ca-certificates.crt",
+        options="endpoint=ep-curly-recipe-a50hnh5z-pooler",  
+        keepalives=1, 
+        keepalives_idle=30, 
+        keepalives_interval=10,
+        keepalives_count=5
+    )
+except psycopg2.Error as e:
+    print(f"Error de conexión a DB: {e}")
+    return None
 
 def create_consumer():
     return KafkaConsumer(
