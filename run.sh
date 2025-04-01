@@ -1,20 +1,12 @@
 #!/bin/bash
-# run.sh
 
-# Función para manejar la señal de SIGTERM
-graceful_shutdown() {
-    echo "Recibida señal de apagado. Cerrando aplicaciones..."
-    pkill -f "python producer.py"
-    pkill -f "python consumer.py"
-    exit 0
-}
+# Inicia Zookeeper en segundo plano
+/opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties &
 
-# Registrar manejador de señales
-trap 'graceful_shutdown' SIGTERM SIGINT
+# Espera a que Zookeeper esté listo (más robusto que un sleep fijo)
+while ! nc -z localhost 2181; do
+  sleep 0.1
+done
 
-# Ejecutar producer y consumer en paralelo
-python producer.py &
-python consumer.py &
-
-# Mantener el script corriendo hasta recibir señal
-wait
+# Inicia Kafka en primer plano
+/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
