@@ -53,7 +53,7 @@ def send_to_kafka(producer, topic, response):
         print(f"Enviado último lote de {len(batch)} registros")
 
 def main():
-    url = "https://raw.githubusercontent.com/.../data.jsonl"
+    url = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
     topic = 'crimes'
     
     producer = create_producer()
