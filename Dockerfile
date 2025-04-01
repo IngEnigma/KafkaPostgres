@@ -1,27 +1,36 @@
-# Dockerfile
-FROM python:3.10-slim-bullseye
+FROM ubuntu:22.04
 
-WORKDIR /app
+# Evita preguntas interactivas durante apt-get
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Instala dependencias en un solo RUN para reducir capas y limpiar caché
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        default-jre \
+        wget \
+        curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copiar aplicaciones
-COPY producer.py consumer.py ./
+# Descarga y descomprime Kafka (binarios pre-compilados)
+RUN wget -q https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
+    tar -xzf kafka_2.12-3.7.2.tgz && \
+    rm kafka_2.12-3.7.2.tgz && \
+    mv kafka_2.12-3.7.2 /opt/kafka
 
-# Copiar dependencias y scripts
-COPY requirements.txt run.sh ./
+# Copia archivos de configuración y script
+COPY zookeeper.properties /opt/kafka/config/
+COPY server.properties /opt/kafka/config/
+COPY run.sh /opt/kafka/
 
-# Instalar dependencias de Python
-RUN pip install --no-cache-dir -r requirements.txt
+# Establece el directorio de trabajo
+WORKDIR /opt/kafka
 
-# Exponer puertos necesarios
-EXPOSE 9092 5432
-
-# Permisos de ejecución para el script
+# Da permisos al script
 RUN chmod +x run.sh
 
-# Comando por defecto (se puede sobreescribir)
+# Expone puertos (Zookeeper y Kafka)
+EXPOSE 2181 9092
+
+# Ejecuta el script al iniciar
 CMD ["./run.sh"]
