@@ -1,175 +1,124 @@
+import json
 from kafka import KafkaConsumer
 import psycopg2
-import json
-import logging
-from psycopg2.extras import execute_batch
-from sys import getsizeof
-import time
+from psycopg2 import sql
+from typing import Dict, Any
 
-# Configuración avanzada de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('kafka_consumer.log')
-    ]
-)
-logger = logging.getLogger(__name__)
+# Configuración de la base de datos
+DB_CONFIG = {
+    "host": "ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech",
+    "database": "crimes",
+    "user": "crimes_owner",
+    "password": "npg_QUkH7TfKZlF8",
+    "sslmode": "require"
+}
+
+# Configuración de Kafka
+KAFKA_CONFIG = {
+    "bootstrap_servers": "localhost:9092",
+    "group_id": "crime-consumer-group",
+    "auto_offset_reset": "earliest",
+    "enable_auto_commit": False
+}
+
+TOPIC_NAME = "crime"
 
 def create_db_connection():
-    """Establece conexión con la base de datos con logging detallado"""
+    """Crea y retorna una conexión a la base de datos."""
     try:
-        logger.info("Intentando conectar a la base de datos Neon.tech...")
-        start_time = time.time()
-        
-        conn = psycopg2.connect(
-            host="ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech",
-            database="crimes",
-            user="crimes_owner",
-            password="npg_QUkH7TfKZlF8",
-            connect_timeout=10,
-            sslmode="require",
-            sslrootcert="/etc/ssl/certs/ca-certificates.crt",
-            options="endpoint=ep-curly-recipe-a50hnh5z-pooler",  
-            keepalives=1, 
-            keepalives_idle=30, 
-            keepalives_interval=10,
-            keepalives_count=5
-        )
-        
-        elapsed_time = time.time() - start_time
-        logger.info(f"✅ Conexión exitosa a Neon.tech | Tiempo: {elapsed_time:.2f}s")
+        conn = psycopg2.connect(**DB_CONFIG)
+        conn.autocommit = False  # Usaremos transacciones explícitas
         return conn
-        
     except psycopg2.Error as e:
-        logger.error(f"❌ Error de conexión a DB: {e}", exc_info=True)
-        return None
+        print(f"Error al conectar a la base de datos: {e}")
+        raise
 
-def create_consumer():
-    """Crea un consumidor Kafka con logging de configuración"""
-    logger.info("Configurando consumidor Kafka:")
-    logger.info(" - Topic: crimes")
-    logger.info(" - Bootstrap servers: localhost:9092")
-    logger.info(" - max_poll_records: 200")
-    logger.info(" - auto_offset_reset: earliest")
-    
+def create_kafka_consumer():
+    """Crea y retorna un consumidor Kafka configurado."""
     return KafkaConsumer(
-        'crimes',
-        bootstrap_servers='localhost:9092',
+        TOPIC_NAME,
         value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-        max_poll_records=200,
-        auto_offset_reset='earliest',
-        consumer_timeout_ms=30000,
-        enable_auto_commit=False  # Para mayor control
+        **KAFKA_CONFIG
     )
 
-def validate_crime_data(crime):
-    """Valida y limpia los datos con logging detallado"""
+def insert_crime_record(conn, record: Dict[str, Any]) -> None:
+    """Inserta un registro de crimen en la base de datos."""
+    query = sql.SQL("""
+        INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (dr_no) DO NOTHING
+    """)
+    
     try:
-        validated = (
-            int(crime['dr_no']),
-            str(crime.get('report_date', ''))[:100],
-            int(crime['victim_age']) if crime.get('victim_age') else None,
-            str(crime.get('victim_sex', ''))[:1].upper(),
-            str(crime.get('crm_cd_desc', ''))[:100]
-        )
-        logger.debug(f"Datos validados: {validated}")
-        return validated
-        
-    except (KeyError, ValueError) as e:
-        logger.warning(f"Dato inválido - Error: {str(e)} - Datos: {crime}")
-        return None
+        with conn.cursor() as cursor:
+            cursor.execute(query, (
+                record.get('dr_no'),
+                record.get('report_date'),
+                record.get('victim_age'),
+                record.get('victim_sex'),  # Nota: Hay un error tipográfico en el JSON original ("victim_sex")
+                record.get('crm_cd_desc')
+            ))
+            conn.commit()
+            print(f"Registro insertado/actualizado: DR_NO {record.get('dr_no')}")
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Error al insertar registro DR_NO {record.get('dr_no')}: {e}")
 
 def process_messages(consumer, conn):
-    """Procesa mensajes con logging de rendimiento y errores"""
-    if not conn:
-        logger.error("No se puede procesar mensajes sin conexión a DB")
-        return
-
-    insert_query = """
-    INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
-    VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (dr_no) DO UPDATE SET
-        report_date = EXCLUDED.report_date,
-        victim_age = EXCLUDED.victim_age,
-        victim_sex = EXCLUDED.victim_sex,
-        crm_cd_desc = EXCLUDED.crm_cd_desc
-    """
-    
-    batch_size = 10
-    batch = []
-    total_processed = 0
-    batch_counter = 0
-    start_time = time.time()
-    
+    """Procesa mensajes del consumidor Kafka."""
     try:
-        with conn.cursor() as cur:
-            for message in consumer:
-                message_size = getsizeof(message.value)
-                logger.debug(f"📩 Mensaje recibido | Tamaño: {message_size} bytes | Offset: {message.offset} | Partición: {message.partition}")
+        for message in consumer:
+            try:
+                record = message.value
+                print(f"Procesando mensaje: DR_NO {record.get('dr_no')}")
                 
-                crime_data = validate_crime_data(message.value)
-                if crime_data:
-                    batch.append(crime_data)
+                # Validación básica del registro
+                if not all(key in record for key in ['dr_no', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']):
+                    print(f"Registro incompleto omitido: {record}")
+                    continue
                 
-                if len(batch) >= batch_size:
-                    batch_counter += 1
-                    batch_start = time.time()
-                    
-                    try:
-                        execute_batch(cur, insert_query, batch)
-                        conn.commit()
-                        elapsed = time.time() - batch_start
-                        total_processed += len(batch)
-                        
-                        logger.info(f"✅ Lote #{batch_counter} insertado | Registros: {len(batch)} | Tiempo: {elapsed:.3f}s | Total: {total_processed}")
-                        batch = []
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Error en lote #{batch_counter}: {str(e)}", exc_info=True)
-                        conn.rollback()
-                        # Opcional: reintentar o manejar errores específicos
-            
-            # Insertar último lote si existe
-            if batch:
-                batch_counter += 1
-                batch_start = time.time()
-                execute_batch(cur, insert_query, batch)
-                conn.commit()
-                total_processed += len(batch)
-                logger.info(f"✅ Último lote #{batch_counter} insertado | Registros: {len(batch)} | Tiempo: {time.time() - batch_start:.3f}s")
+                insert_crime_record(conn, record)
                 
-    except Exception as e:
-        logger.critical(f"🚨 Error crítico en process_messages: {str(e)}", exc_info=True)
-        conn.rollback()
+                # Commit del offset solo después de insertar en DB
+                consumer.commit()
+                
+            except json.JSONDecodeError as e:
+                print(f"Error decodificando mensaje: {e}")
+            except Exception as e:
+                print(f"Error procesando mensaje: {e}")
+                
+    except KeyboardInterrupt:
+        print("Deteniendo el consumidor...")
     finally:
-        total_time = time.time() - start_time
-        logger.info(f"📊 Resumen final | Total registros procesados: {total_processed} | Tiempo total: {total_time:.2f}s")
+        consumer.close()
 
 def main():
-    logger.info("==== INICIANDO CONSUMIDOR KAFKA ====")
+    """Función principal."""
+    print("Iniciando consumidor Kafka...")
     
-    conn = create_db_connection()
-    consumer = create_consumer()
+    conn = None
+    consumer = None
     
     try:
-        if conn:
-            logger.info("Iniciando procesamiento de mensajes...")
-            process_messages(consumer, conn)
-        else:
-            logger.error("No se pudo iniciar por falta de conexión a DB")
-    except KeyboardInterrupt:
-        logger.info("Detención solicitada por usuario")
+        # Crear conexión a la base de datos
+        conn = create_db_connection()
+        
+        # Crear consumidor Kafka
+        consumer = create_kafka_consumer()
+        
+        print(f"Escuchando en el tópico: {TOPIC_NAME}")
+        process_messages(consumer, conn)
+        
     except Exception as e:
-        logger.critical(f"Error inesperado: {str(e)}", exc_info=True)
+        print(f"Error en el proceso principal: {e}")
     finally:
-        if conn:
+        # Cerrar conexiones siempre
+        if conn is not None:
             conn.close()
-            logger.info("Conexión a DB cerrada")
-        consumer.close()
-        logger.info("Consumidor Kafka cerrado")
-        logger.info("==== APLICACIÓN FINALIZADA ====")
+            print("Conexión a la base de datos cerrada.")
+        if consumer is not None:
+            consumer.close()
+            print("Consumidor Kafka cerrado.")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
