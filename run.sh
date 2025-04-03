@@ -1,35 +1,33 @@
 #!/bin/bash
 
-# Configura directorio persistente para Zookeeper
-mkdir -p /var/lib/zookeeper
-chown -R $(whoami) /var/lib/zookeeper
+# Iniciar Zookeeper en segundo plano
+kafka_2.12-3.7.2/bin/zookeeper-server-start.sh kafka_2.12-3.7.2/config/zookeeper.properties &
 
-# Inicia Zookeeper con configuración de memoria
-export KAFKA_HEAP_OPTS="-Xms512M -Xmx1G"
-/opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties &
+# Esperar a que Zookeeper esté listo
+sleep 5
 
-# Espera conexión Zookeeper
-while ! nc -z localhost 2181; do sleep 1; done
+# Iniciar Kafka en segundo plano
+kafka_2.12-3.7.2/bin/kafka-server-start.sh kafka_2.12-3.7.2/config/server.properties &
 
-# Inicia Kafka con configuración de memoria
-export KAFKA_HEAP_OPTS="-Xms1G -Xmx2G"
-/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties &
+# Esperar a que Kafka esté listo
+sleep 10
 
-# Espera conexión Kafka
-while ! nc -z localhost 9092; do sleep 1; done
+# Crear el topic si no existe
+kafka_2.12-3.7.2/bin/kafka-topics.sh --create \
+    --bootstrap-server localhost:9092 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic crime_records || \
+    echo "El topic crime_records ya existe o no se pudo crear"
 
-# Crea topic con configuración optimizada
-/opt/kafka/bin/kafka-topics.sh --create \
-  --topic crimes \
-  --bootstrap-server localhost:9092 \
-  --config max.message.bytes=10485760 \
-  --config retention.ms=604800000 \
-  --partitions 1 \
-  --replication-factor 1 || true
+# Iniciar el consumidor en segundo plano
+python3 consumer.py &
 
-# Inicia servicios Python
-python3 /opt/kafka/consumer.py &
-python3 /opt/kafka/producer.py
+# Esperar un momento antes de iniciar el productor
+sleep 5
 
-# Mantén el contenedor activo
+# Iniciar el productor
+python3 producer.py
+
+# Mantener el contenedor en ejecución
 tail -f /dev/null
