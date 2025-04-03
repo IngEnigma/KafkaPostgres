@@ -3,6 +3,9 @@ from kafka import KafkaConsumer
 import psycopg2
 from psycopg2 import sql
 from typing import Dict, Any
+import time
+from datetime import datetime
+import sys
 
 # Configuración de la base de datos
 DB_CONFIG = {
@@ -18,7 +21,9 @@ KAFKA_CONFIG = {
     "bootstrap_servers": "localhost:9092",
     "group_id": "crime-consumer-group",
     "auto_offset_reset": "earliest",
-    "enable_auto_commit": False
+    "enable_auto_commit": False,
+    "max_poll_records": 100,  # Procesar en lotes de 100
+    "fetch_max_bytes": 52428800  # 50MB
 }
 
 TOPIC_NAME = "crime"
@@ -27,21 +32,28 @@ def create_db_connection():
     """Crea y retorna una conexión a la base de datos."""
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        conn.autocommit = False  # Usaremos transacciones explícitas
+        conn.autocommit = False
+        print("Conexión a PostgreSQL establecida correctamente")
         return conn
     except psycopg2.Error as e:
-        print(f"Error al conectar a la base de datos: {e}")
+        print(f"Error al conectar a PostgreSQL: {e}")
         raise
 
 def create_kafka_consumer():
     """Crea y retorna un consumidor Kafka configurado."""
-    return KafkaConsumer(
-        TOPIC_NAME,
-        value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-        **KAFKA_CONFIG
-    )
+    try:
+        consumer = KafkaConsumer(
+            TOPIC_NAME,
+            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+            **KAFKA_CONFIG
+        )
+        print(f"Consumidor Kafka configurado para el tópico: {TOPIC_NAME}")
+        return consumer
+    except Exception as e:
+        print(f"Error al crear consumidor Kafka: {e}")
+        raise
 
-def insert_crime_record(conn, record: Dict[str, Any]) -> None:
+def insert_crime_record(conn, record: Dict[str, Any]) -> bool:
     """Inserta un registro de crimen en la base de datos."""
     query = sql.SQL("""
         INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
@@ -55,46 +67,90 @@ def insert_crime_record(conn, record: Dict[str, Any]) -> None:
                 record.get('dr_no'),
                 record.get('report_date'),
                 record.get('victim_age'),
-                record.get('victim_sex'),  # Nota: Hay un error tipográfico en el JSON original ("victim_sex")
+                record.get('victim_sex'),
                 record.get('crm_cd_desc')
             ))
             conn.commit()
-            print(f"Registro insertado/actualizado: DR_NO {record.get('dr_no')}")
+            return True
     except psycopg2.Error as e:
         conn.rollback()
-        print(f"Error al insertar registro DR_NO {record.get('dr_no')}: {e}")
+        print(f"Error en base de datos: {e}")
+        return False
 
 def process_messages(consumer, conn):
     """Procesa mensajes del consumidor Kafka."""
+    metrics = {
+        'total_messages': 0,
+        'successful_inserts': 0,
+        'failed_inserts': 0,
+        'invalid_records': 0,
+        'start_time': time.time(),
+        'last_commit_time': time.time()
+    }
+    
     try:
+        print("\nIniciando consumo de mensajes...")
         for message in consumer:
+            metrics['total_messages'] += 1
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            
             try:
                 record = message.value
-                print(f"Procesando mensaje: DR_NO {record.get('dr_no')}")
+                print(f"\n[{timestamp}] Procesando mensaje | "
+                      f"DR_NO: {record.get('dr_no')} | "
+                      f"Tamaño: {len(str(record))} bytes | "
+                      f"Partición: {message.partition} | "
+                      f"Offset: {message.offset}")
                 
-                # Validación básica del registro
+                # Validación del registro
                 if not all(key in record for key in ['dr_no', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']):
-                    print(f"Registro incompleto omitido: {record}")
+                    metrics['invalid_records'] += 1
+                    print(f"[{timestamp}] Registro incompleto omitido")
                     continue
                 
-                insert_crime_record(conn, record)
+                # Insertar en PostgreSQL
+                if insert_crime_record(conn, record):
+                    metrics['successful_inserts'] += 1
+                    print(f"[{timestamp}] Registro insertado correctamente")
+                else:
+                    metrics['failed_inserts'] += 1
                 
-                # Commit del offset solo después de insertar en DB
-                consumer.commit()
-                
+                # Commit cada 100 mensajes o cada 5 segundos
+                current_time = time.time()
+                if (metrics['total_messages'] % 100 == 0 or 
+                    current_time - metrics['last_commit_time'] > 5):
+                    consumer.commit()
+                    metrics['last_commit_time'] = current_time
+                    print(f"[{timestamp}] Commit de offsets realizado")
+                    
             except json.JSONDecodeError as e:
-                print(f"Error decodificando mensaje: {e}")
+                print(f"[{timestamp}] ERROR decodificando mensaje: {e}")
             except Exception as e:
-                print(f"Error procesando mensaje: {e}")
+                print(f"[{timestamp}] ERROR procesando mensaje: {e}")
                 
     except KeyboardInterrupt:
-        print("Deteniendo el consumidor...")
+        print("\nDeteniendo el consumidor...")
     finally:
+        print_summary(metrics)
         consumer.close()
+
+def print_summary(metrics: Dict[str, Any]) -> None:
+    """Imprime un resumen de las métricas."""
+    duration = time.time() - metrics['start_time']
+    print("\n" + "="*50)
+    print("RESUMEN DE CONSUMO")
+    print("="*50)
+    print(f"Total mensajes procesados: {metrics['total_messages']}")
+    print(f"Inserciones exitosas: {metrics['successful_inserts']}")
+    print(f"Inserciones fallidas: {metrics['failed_inserts']}")
+    print(f"Registros inválidos: {metrics['invalid_records']}")
+    print(f"Tiempo total: {duration:.2f} segundos")
+    print(f"Velocidad: {metrics['total_messages']/max(duration, 0.1):.2f} mensajes/segundo")
+    print("="*50 + "\n")
 
 def main():
     """Función principal."""
-    print("Iniciando consumidor Kafka...")
+    print("Iniciando consumidor Kafka-PostgreSQL...")
     
     conn = None
     consumer = None
@@ -106,19 +162,7 @@ def main():
         # Crear consumidor Kafka
         consumer = create_kafka_consumer()
         
-        print(f"Escuchando en el tópico: {TOPIC_NAME}")
+        # Procesar mensajes
         process_messages(consumer, conn)
         
-    except Exception as e:
-        print(f"Error en el proceso principal: {e}")
-    finally:
-        # Cerrar conexiones siempre
-        if conn is not None:
-            conn.close()
-            print("Conexión a la base de datos cerrada.")
-        if consumer is not None:
-            consumer.close()
-            print("Consumidor Kafka cerrado.")
-
-if __name__ == '__main__':
-    main()
+   
