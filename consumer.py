@@ -103,11 +103,12 @@ def process_messages(consumer, conn):
                       f"Offset: {message.offset}")
                 
                 # Validación del registro
-                if not all(key in record for key in ['dr_no', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']):
+                required_keys = ['dr_no', 'report_date', 'victim_age', 'victim_sex', 'crm_cd_desc']
+                missing_keys = [key for key in required_keys if key not in record]
+                if missing_keys:
                     metrics['invalid_records'] += 1
-                    print(f"[{timestamp}] Registro incompleto omitido")
+                    print(f"[{timestamp}] Registro incompleto - Faltan campos: {missing_keys}")
                     continue
-                
                 # Insertar en PostgreSQL
                 if insert_crime_record(conn, record):
                     metrics['successful_inserts'] += 1
