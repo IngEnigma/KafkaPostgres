@@ -1,38 +1,36 @@
 FROM ubuntu:22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Instala todas las dependencias
+# Instalar dependencias del sistema
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        default-jre \
-        python3 \
-        python3-pip \
-        wget \
-        curl \
-        ca-certificates \
-        netcat-openbsd \
-        postgresql-client && \ 
-    apt-get clean && \
+    apt-get install -y \
+    default-jre \
+    wget \
+    curl \
+    python3 \
+    python3-pip \
+    postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
-# Instala librerías de Python
-RUN pip3 install kafka-python psycopg2-binary requests
+# Instalar Kafka
+RUN wget https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
+    tar -xvf kafka_2.12-3.7.2.tgz && \
+    rm kafka_2.12-3.7.2.tgz
 
-# Descarga y configura Kafka
-RUN wget -q https://dlcdn.apache.org/kafka/3.7.2/kafka_2.12-3.7.2.tgz && \
-    tar -xzf kafka_2.12-3.7.2.tgz && \
-    rm kafka_2.12-3.7.2.tgz && \
-    mv kafka_2.12-3.7.2 /opt/kafka
+# Instalar dependencias de Python
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
 
-COPY zookeeper.properties /opt/kafka/config/
-COPY server.properties /opt/kafka/config/
-COPY *.sh /opt/kafka/
-COPY *.py /opt/kafka/  
+# Copiar scripts
+COPY run_kafka.sh .
+COPY producer.py .
+COPY consumer.py .
 
-WORKDIR /opt/kafka
-RUN chmod +x *.sh
+# Configurar permisos
+RUN chmod +x run_kafka.sh && \
+    chmod +x kafka_2.12-3.7.2/bin/*.sh
 
-EXPOSE 2181 9092
+# Puerto de Kafka
+EXPOSE 9092
 
-CMD ["./run.sh"]  
+# Comando de inicio
+CMD ["bash", "./run_kafka.sh"]
