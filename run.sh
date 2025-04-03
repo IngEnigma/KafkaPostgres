@@ -17,4 +17,13 @@ kafka_2.12-3.7.2/bin/kafka-topics.sh --create \
 
 sleep 5
 
+python3 consumer.py &
+ 
+ # Esperar un momento antes de iniciar el productor
+sleep 5
+ 
+ # Iniciar el productor
+python3 producer.py
+ 
+ # Mantener el contenedor en ejecución
 tail -f /dev/null
