@@ -26,7 +26,7 @@ COPY producer.py .
 COPY consumer.py .
 
 # Configurar permisos
-RUN chmod +x run_kafka.sh && \
+RUN chmod +x run.sh && \
     chmod +x kafka_2.12-3.7.2/bin/*.sh
 
 # Puerto de Kafka
