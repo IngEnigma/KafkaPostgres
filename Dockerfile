@@ -21,7 +21,7 @@ COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
 # Copiar scripts
-COPY run_kafka.sh .
+COPY run.sh .
 COPY producer.py .
 COPY consumer.py .
 
