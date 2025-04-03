@@ -17,7 +17,7 @@ kafka_2.12-3.7.2/bin/kafka-topics.sh --create \
     --bootstrap-server localhost:9092 \
     --replication-factor 1 \
     --partitions 1 \
-    --topic crime_records || \
+    --topic crime || \
     echo "El topic crime_records ya existe o no se pudo crear"
 
 # Iniciar el consumidor en segundo plano
