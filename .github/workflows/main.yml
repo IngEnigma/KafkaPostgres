@@ -21,7 +21,7 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t ${{ secrets.DOCKER_USER }}/crime-kafka-pg:latest -t ${{ secrets.DOCKER_USER }}/my-app:${{ github.sha }} .
+          docker build -t ${{ secrets.DOCKER_USER }}/crime-kafka-pg:latest -t ${{ secrets.DOCKER_USER }}/crime-kafka-pg:${{ github.sha }} .
 
       - name: Push Docker Image
         run: |
