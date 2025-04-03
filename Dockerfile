@@ -33,4 +33,4 @@ RUN chmod +x run_kafka.sh && \
 EXPOSE 9092
 
 # Comando de inicio
-CMD ["bash", "./run_kafka.sh"]
+CMD ["bash", "./run.sh"]
