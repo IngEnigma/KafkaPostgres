@@ -165,4 +165,24 @@ def main():
         # Procesar mensajes
         process_messages(consumer, conn)
         
-   
+    except psycopg2.Error as db_error:
+        print(f"Error de base de datos: {db_error}")
+    except Exception as general_error:  # Captura otros errores incluyendo KafkaError
+        print(f"Error inesperado: {general_error}")
+    finally:
+        # Cierre seguro de recursos en cualquier caso
+        if conn is not None:
+            try:
+                conn.close()
+                print("Conexión a PostgreSQL cerrada")
+            except Exception as e:
+                print(f"Error al cerrar conexión a PostgreSQL: {e}")
+        
+        if consumer is not None:
+            try:
+                consumer.close()
+                print("Consumidor Kafka cerrado")
+            except Exception as e:
+                print(f"Error al cerrar consumidor Kafka: {e}")
+        
+        print("Consumidor detenido")
