@@ -15,10 +15,6 @@ kafka_2.12-3.7.2/bin/kafka-topics.sh --create \
     --topic crime || \
     echo "El topic crime_records ya existe o no se pudo crear"
 
-python3 consumer.py &
-
 sleep 5
-
-python3 producer.py
 
 tail -f /dev/null
