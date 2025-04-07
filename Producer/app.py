@@ -1,45 +1,35 @@
-from flask import Flask, jsonify
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
-import json
+from fastapi import FastAPI, HTTPException
 import requests
-import time
-import logging
+from kafka import KafkaProducer
+import os
+import json
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+KAFKA_TOPIC = "crime_data"
+KAFKA_SERVER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
-def create_producer():
-    for i in range(10):  # 10 intentos
-        try:
-            return KafkaProducer(
-                bootstrap_servers='kafka:9092',
-                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                api_version=(2, 5, 0)
-            )
-        except NoBrokersAvailable:
-            if i == 9:
-                logger.error("No se pudo conectar a Kafka después de 10 intentos")
-                raise
-            logger.warning(f"Intento {i+1}/10 - Kafka no disponible, reintentando...")
-            time.sleep(5)
+app = FastAPI()
 
-producer = create_producer()
+producer = KafkaProducer(
+    bootstrap_servers=KAFKA_SERVER,
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
+)
 
-@app.route('/send-jsonl', methods=['POST'])
-def send_jsonl():
+@app.post("/send-data")
+def send_data():
     url = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
     try:
         response = requests.get(url)
         response.raise_for_status()
-        for line in response.text.strip().splitlines():
-            data = json.loads(line)
-            producer.send('crimes_topic', value=data)
-        producer.flush()
-        return jsonify({"status": "ok", "msg": "Datos enviados a Kafka"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+        lines = response.text.strip().splitlines()
+        for line in lines:
+            try:
+                data = json.loads(line)
+                producer.send(KAFKA_TOPIC, data)
+            except json.JSONDecodeError as e:
+                print(f"Skipping line due to JSON error: {e}")
+        
+        producer.flush()
+        return {"message": "Data sent to Kafka successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
