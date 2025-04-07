@@ -1,4 +1,4 @@
-kafka-python
-Flask
+fastapi
+uvicorn
 requests
-psycopg2-binary
+kafka-python
