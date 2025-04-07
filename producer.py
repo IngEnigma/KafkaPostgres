@@ -1,11 +1,18 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from confluent_kafka import Producer
 import requests
 
 app = Flask(__name__)
 
-# Configuración del productor Redpanda (puerto 9092)
-producer_conf = {'bootstrap.servers': 'cvq4abs3mareak309q80.any.us-west-2.mpx.prd.cloud.redpanda.com:9092'}
+# Configuración del productor para Redpanda Cloud
+producer_conf = {
+    'bootstrap.servers': 'cvq4abs3mareak309q80.any.us-west-2.mpx.prd.cloud.redpanda.com:9092',
+    'security.protocol': 'SASL_SSL',           
+    'sasl.mechanism': 'SCRAM-SHA-256',         
+    'sasl.username': 'IngEnigma',            
+    'sasl.password': 'BrARBOxX98VI4f2LIuIT1911NYGrXu',          
+}
+
 producer = Producer(producer_conf)
 
 TOPIC = "crimes"
