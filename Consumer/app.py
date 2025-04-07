@@ -1,45 +1,75 @@
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaError
 import psycopg2
-import os
 import json
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 KAFKA_TOPIC = "crime_data"
-KAFKA_SERVER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_SERVER = "kafka:9092"
 
-consumer = KafkaConsumer(
-    KAFKA_TOPIC,
-    bootstrap_servers=KAFKA_SERVER,
-    value_deserializer=lambda v: json.loads(v.decode("utf-8")),
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    group_id="crime_group"
-)
+# Credenciales PostgreSQL (hardcoded como pediste)
+PGHOST = "ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech"
+PGDATABASE = "crimes"
+PGUSER = "crimes_owner"
+PGPASSWORD = "npg_QUkH7TfKZlF8"
 
-conn = psycopg2.connect(
-    host=os.getenv("PGHOST"),
-    dbname=os.getenv("PGDATABASE"),
-    user=os.getenv("PGUSER"),
-    password=os.getenv("PGPASSWORD")
-)
-cur = conn.cursor()
+# Conexión a PostgreSQL
+try:
+    conn = psycopg2.connect(
+        host=PGHOST,
+        dbname=PGDATABASE,
+        user=PGUSER,
+        password=PGPASSWORD
+    )
+    cur = conn.cursor()
+    logger.info("Connected to PostgreSQL.")
+except Exception as e:
+    logger.error(f"Database connection error: {e}")
+    raise
 
-print("Waiting for messages...")
+# Kafka Consumer
+try:
+    consumer = KafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_SERVER,
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        group_id="crime_group"
+    )
+    logger.info(f"Kafka consumer initialized and subscribed to topic '{KAFKA_TOPIC}'.")
+except KafkaError as e:
+    logger.error(f"Kafka consumer initialization error: {e}")
+    raise
+
+# Procesamiento
+logger.info("Waiting for messages...")
 
 for message in consumer:
     data = message.value
     try:
+        required = ["dr_no", "report_date", "victim_age", "victim_sex", "crm_cd_desc"]
+        if not all(field in data for field in required):
+            logger.warning(f"Incomplete data skipped: {data}")
+            continue
+
         cur.execute("""
             INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
             VALUES (%s, %s, %s, %s, %s)
         """, (
-            data.get("dr_no"),
-            data.get("report_date"),
-            data.get("victim_age"),
-            data.get("victim_sex"),
-            data.get("crm_cd_desc")
+            data["dr_no"],
+            data["report_date"],
+            data["victim_age"],
+            data["victim_sex"],
+            data["crm_cd_desc"]
         ))
         conn.commit()
-        print("Inserted:", data)
-    except Exception as e:
+        logger.info(f"Inserted record: {data['dr_no']}")
+
+    except psycopg2.Error as db_error:
         conn.rollback()
-        print("Error inserting:", data, "Error:", e)
+        logger.error(f"Database insert error: {db_error}")
+    except Exception as ex:
+        logger.error(f"Unexpected error: {ex}")
