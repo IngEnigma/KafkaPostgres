@@ -1,40 +1,21 @@
-version: '3.8'
-
-services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.2
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-
-  kafka:
-    image: confluentinc/cp-kafka:7.3.2
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
-
   producer:
     build: ./producer
     ports:
       - "8000:8000"
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
       - kafka
+    command: ["/wait-for-kafka.sh", "kafka:9092", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
 
   consumer:
     build: ./consumer
+    depends_on:
+      - kafka
+    command: ["/wait-for-kafka.sh", "kafka:9092", "python", "consumer.py"]
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - PGHOST=ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech
       - PGDATABASE=crimes
       - PGUSER=crimes_owner
       - PGPASSWORD=npg_QUkH7TfKZlF8
-    depends_on:
-      - kafka
