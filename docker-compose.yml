@@ -20,13 +20,13 @@ services:
       - zookeeper
 
   producer-api:
-    build: ./producer-api
+    build: ./Producer
     ports:
       - "5000:5000"
     depends_on:
       - kafka
 
   consumer-db:
-    build: ./consumer-db
+    build: ./Consumer
     depends_on:
       - kafka
