@@ -28,7 +28,7 @@ services:
     networks:
       - kafka-net
 
-  api:
+  producer:
     build: .
     depends_on:
       - kafka
