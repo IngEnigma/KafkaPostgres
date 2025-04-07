@@ -1,21 +1,44 @@
-  producer:
-    build: ./producer
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  # Permite crear tópicos automáticamente
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+    networks:
+      - kafka-net
+
+  api:
+    build: .
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Usa el nombre del servicio Kafka
     ports:
       - "8000:8000"
-    depends_on:
-      - kafka
-    command: ["/wait-for-kafka.sh", "kafka:9092", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - kafka-net
 
-  consumer:
-    build: ./consumer
-    depends_on:
-      - kafka
-    command: ["/wait-for-kafka.sh", "kafka:9092", "python", "consumer.py"]
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - PGHOST=ep-curly-recipe-a50hnh5z-pooler.us-east-2.aws.neon.tech
-      - PGDATABASE=crimes
-      - PGUSER=crimes_owner
-      - PGPASSWORD=npg_QUkH7TfKZlF8
+networks:
+  kafka-net:
+    driver: bridge
