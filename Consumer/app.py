@@ -1,6 +1,13 @@
 from kafka import KafkaConsumer
+from kafka.errors import NoBrokersAvailable
 import json
 import psycopg2
+import time
+import logging
+
+# Configura logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 TOPIC = 'crimes_topic'
 DB_CONFIG = {
@@ -10,10 +17,29 @@ DB_CONFIG = {
     "password": "npg_QUkH7TfKZlF8"
 }
 
+def create_consumer():
+    for i in range(10):  # 10 intentos
+        try:
+            return KafkaConsumer(
+                TOPIC,
+                bootstrap_servers='kafka:9092',
+                auto_offset_reset='earliest',
+                group_id='grupo_crimes',
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                api_version=(2, 5, 0)  # Especifica versión de API
+            )
+        except NoBrokersAvailable:
+            if i == 9:
+                logger.error("No se pudo conectar a Kafka después de 10 intentos")
+                raise
+            logger.warning(f"Intento {i+1}/10 - Kafka no disponible, reintentando...")
+            time.sleep(5)
+
 def insert_to_db(data):
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor()
+    conn = None
     try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
         cur.execute("""
             INSERT INTO crimes (dr_no, report_date, victim_age, victim_sex, crm_cd_desc)
             VALUES (%s, %s, %s, %s, %s)
@@ -25,22 +51,20 @@ def insert_to_db(data):
             data.get("crm_cd_desc")
         ))
         conn.commit()
+        logger.info(f"Dato insertado: {data.get('dr_no')}")
     except Exception as e:
-        print("Error al insertar:", e)
+        logger.error(f"Error al insertar: {e}")
     finally:
-        cur.close()
-        conn.close()
+        if conn:
+            conn.close()
 
-consumer = KafkaConsumer(
-    TOPIC,
-    bootstrap_servers='kafka:9092',
-    auto_offset_reset='earliest',
-    group_id='grupo_crimes',
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
+# Intenta crear el consumer
+try:
+    consumer = create_consumer()
+    logger.info("Consumidor esperando mensajes...")
 
-print("Consumidor esperando mensajes...")
-
-for message in consumer:
-    print("Recibido:", message.value)
-    insert_to_db(message.value)
+    for message in consumer:
+        logger.info(f"Recibido: {message.value}")
+        insert_to_db(message.value)
+except Exception as e:
+    logger.error(f"Error en el consumidor: {e}")
