@@ -7,9 +7,6 @@ import time
 import logging
 
 app = Flask(__name__)
-TOPIC = 'crimes_topic'
-
-# Configura logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -19,7 +16,7 @@ def create_producer():
             return KafkaProducer(
                 bootstrap_servers='kafka:9092',
                 value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                api_version=(2, 5, 0)  # Especifica versión de API
+                api_version=(2, 5, 0)
             )
         except NoBrokersAvailable:
             if i == 9:
@@ -28,25 +25,17 @@ def create_producer():
             logger.warning(f"Intento {i+1}/10 - Kafka no disponible, reintentando...")
             time.sleep(5)
 
-# Intenta crear el producer al inicio
-producer = None
-try:
-    producer = create_producer()
-except Exception as e:
-    logger.error(f"Error inicializando Kafka producer: {e}")
+producer = create_producer()
 
 @app.route('/send-jsonl', methods=['POST'])
 def send_jsonl():
-    if not producer:
-        return jsonify({"status": "error", "msg": "Producer no inicializado"}), 500
-        
     url = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
     try:
         response = requests.get(url)
         response.raise_for_status()
         for line in response.text.strip().splitlines():
             data = json.loads(line)
-            producer.send(TOPIC, value=data)
+            producer.send('crimes_topic', value=data)
         producer.flush()
         return jsonify({"status": "ok", "msg": "Datos enviados a Kafka"}), 200
     except Exception as e:
