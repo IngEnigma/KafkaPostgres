@@ -1,1 +1,4 @@
-
+kafka-python
+Flask
+requests
+psycopg2-binary
