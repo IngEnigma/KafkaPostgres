@@ -27,16 +27,21 @@ def delivery_report(err, msg):
 @app.route('/send-crimes', methods=['POST'])
 def send_crimes():
     try:
+        print("Obteniendo datos desde:", JSONL_URL)
         response = requests.get(JSONL_URL)
         response.raise_for_status()
+        print(f"Recibidos {len(response.text.strip().splitlines())} registros")
 
         for line in response.text.strip().splitlines():
+            print("Enviando línea:", line)
             producer.produce(TOPIC, line.encode('utf-8'), callback=delivery_report)
 
         producer.flush()
+        print("Todos los datos fueron enviados")
         return jsonify({"status": "success", "message": "Todos los datos fueron enviados al tópico 'crimes'"}), 200
 
     except Exception as e:
+        print("Error:", str(e))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
