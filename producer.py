@@ -14,7 +14,7 @@ PRODUCER_CONF = {
 
 producer = Producer(PRODUCER_CONF)
 
-TOPIC = "crimes"
+TOPIC = "crimes_pg"
 
 JSONL_URL = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
 
