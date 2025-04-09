@@ -1,48 +1,55 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from confluent_kafka import Producer
 import requests
 
 app = Flask(__name__)
 
-# Configuración del productor para Redpanda Cloud
-producer_conf = {
+PRODUCER_CONF = {
     'bootstrap.servers': 'cvq4abs3mareak309q80.any.us-west-2.mpx.prd.cloud.redpanda.com:9092',
-    'security.protocol': 'SASL_SSL',           
-    'sasl.mechanism': 'SCRAM-SHA-256',         
-    'sasl.username': 'IngEnigma',            
-    'sasl.password': 'BrARBOxX98VI4f2LIuIT1911NYGrXu',          
+    'security.protocol': 'SASL_SSL',
+    'sasl.mechanism': 'SCRAM-SHA-256',
+    'sasl.username': 'IngEnigma',
+    'sasl.password': 'BrARBOxX98VI4f2LIuIT1911NYGrXu',
 }
 
-producer = Producer(producer_conf)
+producer = Producer(PRODUCER_CONF)
 
-TOPIC = "crimes"
+TOPIC = "crimes_pg"
+
 JSONL_URL = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/heads/master/results/male_crimes/data.jsonl"
 
 def delivery_report(err, msg):
     if err:
-        print(f'Error al enviar: {err}')
+        print(f"Error al enviar mensaje: {err}")
     else:
-        print(f'Enviado: {msg.value().decode("utf-8")} a {msg.topic()}')
+        print(f"Mensaje enviado a {msg.topic()}: {msg.value().decode('utf-8')}")
 
 @app.route('/send-crimes', methods=['POST'])
 def send_crimes():
     try:
-        print("Obteniendo datos desde:", JSONL_URL)
+        print(f"Descargando datos desde: {JSONL_URL}")
         response = requests.get(JSONL_URL)
         response.raise_for_status()
-        print(f"Recibidos {len(response.text.strip().splitlines())} registros")
 
-        for line in response.text.strip().splitlines():
-            print("Enviando línea:", line)
+        lines = response.text.strip().splitlines()
+        print(f"Total de registros a enviar: {len(lines)}")
+
+        for line in lines:
+            print(f"Enviando: {line}")
             producer.produce(TOPIC, line.encode('utf-8'), callback=delivery_report)
 
         producer.flush()
         print("Todos los datos fueron enviados")
+
         return jsonify({"status": "success", "message": "Todos los datos fueron enviados al tópico 'crimes'"}), 200
 
     except Exception as e:
-        print("Error:", str(e))
+        print(f"Error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/health')
+def health_check():
+    return "ok", 200
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=8080)
