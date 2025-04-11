@@ -1,6 +1,12 @@
 from flask import Flask, jsonify, request
 from confluent_kafka import Producer
 import requests
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 app = Flask(__name__)
 
@@ -20,31 +26,31 @@ JSONL_URL = "https://raw.githubusercontent.com/IngEnigma/StreamlitSpark/refs/hea
 
 def delivery_report(err, msg):
     if err:
-        print(f"Error al enviar mensaje: {err}")
+        logging.error(f"Error al enviar mensaje: {err}")
     else:
-        print(f"Mensaje enviado a {msg.topic()}: {msg.value().decode('utf-8')}")
+        logging.info(f"Mensaje enviado a {msg.topic()}: {msg.value().decode('utf-8')}")
 
 @app.route('/send-crimes', methods=['POST'])
 def send_crimes():
     try:
-        print(f"Descargando datos desde: {JSONL_URL}")
+        logging.info(f"Descargando datos desde: {JSONL_URL}")
         response = requests.get(JSONL_URL)
         response.raise_for_status()
 
         lines = response.text.strip().splitlines()
-        print(f"Total de registros a enviar: {len(lines)}")
+        logging.info(f"Total de registros a enviar: {len(lines)}")
 
         for line in lines:
-            print(f"Enviando: {line}")
+            logging.debug(f"Enviando: {line}")
             producer.produce(TOPIC, line.encode('utf-8'), callback=delivery_report)
 
         producer.flush()
-        print("Todos los datos fueron enviados")
+        logging.info("Todos los datos fueron enviados correctamente.")
 
-        return jsonify({"status": "success", "message": "Todos los datos fueron enviados al tópico 'crimes'"}), 200
+        return jsonify({"status": "success", "message": f"Todos los datos fueron enviados al tópico '{TOPIC}'"}), 200
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logging.error(f"Error al enviar los datos: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/health')
